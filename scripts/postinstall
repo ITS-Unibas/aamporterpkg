@@ -1,0 +1,52 @@
+#!/bin/bash
+
+payload="placeholder.dmg"
+payloadPosition="/private/tmp"
+mountPoint="$payloadPosition/$(uuidgen)"
+
+log(){
+	echo "aamporterpkg: $@"
+}
+
+cleanup(){
+	log "Removing temporary files"
+	hdiutil detach -force "$mountPoint"
+	rm -d "$mountPoint"
+	rm -rf "$payloadPosition/$payload"
+	exit $1
+}
+
+log "Mounting volume"
+if [[ ! "$payload" == *.dmg ]];then
+	log "Payload $payload is not a dmg."
+	cleanup 1
+fi
+
+log "Create temporary mount point"
+if ! mkdir "$mountPoint"; then
+        log "Failed to create temporary mount point '$mountPoint'"
+	cleanup 1
+fi
+
+log "Mounting disk image '$payloadPosition/$payload' at '$mountPoint'"
+if ! hdiutil attach -nobrowse -mountpoint "$mountPoint" "$payloadPosition/$payload"; then
+	log "Error while mounting disk image '$payload' at '$mountPoint'"
+	cleanup 1
+fi
+
+log "Exectuing intaller scripts for adobe updates"
+level_1="$(ls $mountPoint | grep Adobe | grep -v AdobePatchInstaller)"
+level_2="AdobePatchInstaller.app/Contents/MacOS/AdobePatchInstaller"
+installer_path="$mountPoint/$level_1/$level_2"
+
+if [[ -e "$installer_path" ]]; then
+	if ! "$installer_path" --mode=silent --skipProcessCheck=1; then
+		log "Error while executing script at $installer_path"
+		cleanup 1
+	fi
+else
+	log "No script present at $installer_path"
+	cleanup 1
+fi
+
+cleanup 0
